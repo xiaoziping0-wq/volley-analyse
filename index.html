@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>垫球技术分析</title>
+<style>
+:root {
+  --bg:#0f172a; --card:rgba(255,255,255,0.05); --border:rgba(255,255,255,0.10);
+  --p1:#06b6d4; --p2:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+  --tx:#f1f5f9; --mt:#94a3b8;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font-family:"Microsoft YaHei","PingFang SC","Helvetica Neue",sans-serif;
+     min-height:100vh;display:flex;flex-direction:column;align-items:center}
+.view{display:none;width:100%;max-width:860px;padding:24px 16px 48px}
+.view.on{display:block}
+#view-init,#view-analyzing{display:none;flex-direction:column;align-items:center;
+  justify-content:center;min-height:80vh;text-align:center}
+#view-init.on,#view-analyzing.on{display:flex}
+
+/* glass card */
+.g{background:var(--card);border:1px solid var(--border);border-radius:16px;
+   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+     padding:12px 32px;border-radius:10px;font-size:15px;font-weight:600;
+     cursor:pointer;border:none;transition:opacity .15s,transform .15s}
+.btn:hover{opacity:.85;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-p{background:linear-gradient(135deg,var(--p1),var(--p2));color:#fff}
+.btn-g{background:var(--card);border:1px solid var(--border);color:var(--tx)}
+
+/* ── INIT / LOADING spinner ── */
+.spin-wrap{position:relative;width:90px;height:90px;margin-bottom:28px}
+.spin{width:90px;height:90px;border:3px solid var(--border);
+      border-top-color:var(--p1);border-radius:50%;animation:spin 1s linear infinite}
+.spin-icon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.init-msg{font-size:16px;color:var(--tx);margin-bottom:6px}
+.init-sub{color:var(--mt);font-size:13px}
+
+/* ── SETUP (首次配置) ── */
+#view-setup{padding-top:40px;text-align:center}
+.setup-title{font-size:22px;font-weight:700;margin-bottom:8px;
+  background:linear-gradient(135deg,var(--p1),var(--p2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.setup-sub{color:var(--mt);font-size:14px;margin-bottom:32px;line-height:1.7}
+.setup-box{padding:28px;max-width:500px;margin:0 auto 20px}
+.setup-box label{display:block;font-size:13px;color:var(--mt);text-align:left;margin-bottom:6px}
+.setup-box input[type=text]{width:100%;padding:10px 14px;background:rgba(255,255,255,.07);
+  border:1px solid var(--border);border-radius:8px;color:var(--tx);font-size:14px;outline:none}
+.setup-box input:focus{border-color:var(--p1)}
+.setup-or{color:var(--mt);font-size:13px;margin:16px 0}
+.setup-hint{color:var(--mt);font-size:12px;margin-top:12px;line-height:1.6;text-align:left}
+
+/* ── UPLOAD ── */
+#view-upload{padding-top:52px;text-align:center}
+.logo{margin-bottom:8px}
+.logo svg{width:52px;height:52px}
+.hero{font-size:28px;font-weight:700;margin-bottom:6px;
+  background:linear-gradient(135deg,var(--p1),var(--p2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-sub{color:var(--mt);font-size:14px;margin-bottom:36px}
+#drop{border:2px dashed rgba(6,182,212,.4);border-radius:16px;
+      padding:44px 24px;cursor:pointer;
+      transition:border-color .15s,background .15s;margin-bottom:20px}
+#drop:hover,#drop.over{border-color:var(--p1);background:rgba(6,182,212,.06)}
+#drop svg{width:44px;height:44px;color:var(--p1);margin-bottom:10px}
+#drop .hint{color:var(--mt);font-size:13px;margin-top:6px}
+#drop .hint span{color:var(--p1)}
+#fname{font-size:13px;color:var(--p1);margin-top:6px;min-height:18px}
+#finput{display:none}
+.fmt{color:var(--mt);font-size:12px;margin-bottom:20px}
+.time-note{color:var(--mt);font-size:12px;margin-top:12px}
+
+/* ── ANALYZING ── */
+.progress-wrap{width:320px;margin-bottom:20px}
+.progress-bar-bg{height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--p1),var(--p2));
+              border-radius:4px;width:0;transition:width .3s}
+.progress-label{display:flex;justify-content:space-between;font-size:12px;color:var(--mt);margin-top:6px}
+
+/* ── RESULT ── */
+#view-result{padding-top:28px}
+.res-header{display:flex;align-items:center;gap:20px;padding:20px;margin-bottom:18px}
+.score-ring svg{display:block}
+#score-num{font-size:30px;font-weight:700;fill:var(--tx);font-family:"Microsoft YaHei",sans-serif}
+.score-lbl{fill:var(--mt);font-size:11px;font-family:"Microsoft YaHei",sans-serif}
+#ring-arc{transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1);stroke-linecap:round}
+.res-meta{flex:1;min-width:0}
+.rep-badge{display:inline-block;background:rgba(6,182,212,.15);color:var(--p1);
+           border:1px solid rgba(6,182,212,.3);border-radius:20px;
+           padding:3px 12px;font-size:13px;margin-bottom:10px}
+#summary{font-size:15px;line-height:1.6;word-break:break-word}
+.sec-title{font-size:12px;font-weight:600;color:var(--mt);
+           text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.phase-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.ph{padding:16px}
+.ph-name{font-size:13px;color:var(--mt);margin-bottom:4px}
+.ph-score{font-size:28px;font-weight:700;margin-bottom:10px}
+.ph-bg{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
+.ph-bar{height:100%;border-radius:3px;
+        background:linear-gradient(90deg,var(--p1),var(--p2));
+        transition:width 1s cubic-bezier(.4,0,.2,1);width:0}
+.kf-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.kf{cursor:pointer;overflow:hidden;border-radius:12px}
+.kf img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;
+        transition:transform .2s;display:block}
+.kf:hover img{transform:scale(1.03)}
+.kf-lbl{font-size:12px;color:var(--mt);text-align:center;margin-top:5px}
+.issues{margin-bottom:24px}
+.iss{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;
+     border-radius:12px;margin-bottom:9px}
+.iss.high{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)}
+.iss.medium{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)}
+.iss-icon{font-size:17px;flex-shrink:0;margin-top:1px}
+.iss-body{min-width:0}
+.iss-name{font-size:14px;font-weight:600;margin-bottom:3px;word-break:break-word}
+.iss.high .iss-name{color:var(--err)} .iss.medium .iss-name{color:var(--warn)}
+.iss-desc{font-size:13px;color:var(--mt);margin-bottom:4px;line-height:1.5}
+.iss-adv{font-size:13px;color:#93c5fd;line-height:1.5}
+.no-iss{text-align:center;padding:22px;color:var(--ok);font-size:15px}
+.res-foot{text-align:center;padding-top:8px}
+
+/* lightbox */
+#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);
+    z-index:999;align-items:center;justify-content:center}
+#lb.open{display:flex}
+#lb img{max-width:92vw;max-height:90vh;border-radius:8px}
+#lb-x{position:absolute;top:18px;right:22px;font-size:28px;color:#fff;
+       cursor:pointer;background:none;border:none;line-height:1}
+
+/* error toast */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+       background:#1e293b;border:1px solid var(--border);color:var(--tx);
+       padding:12px 20px;border-radius:10px;font-size:14px;
+       display:none;z-index:1000;max-width:360px;text-align:center}
+
+@media(max-width:480px){
+  .phase-row,.kf-row{grid-template-columns:1fr}
+  .res-header{flex-direction:column;text-align:center}
+  .hero{font-size:22px}
+  #view-upload{padding-top:28px}
+}
+</style>
+</head>
+<body>
+
+<!-- ① 初始化 -->
+<div id="view-init">
+  <div class="spin-wrap"><div class="spin"></div><div class="spin-icon">🏐</div></div>
+  <div class="init-msg" id="init-msg">正在加载 AI 模型...</div>
+  <div class="init-sub">首次加载约需10~30秒，请稍候</div>
+</div>
+
+<!-- ② 首次配置（无模型URL时显示） -->
+<div class="view" id="view-setup">
+  <div style="text-align:center;padding-top:40px">
+    <div class="setup-title">首次使用配置</div>
+    <p class="setup-sub">需要加载姿态识别模型文件（约7MB）<br>请选择以下任一方式：</p>
+  </div>
+
+  <div class="g setup-box">
+    <label>方式一：输入模型文件的 Gitee Raw 链接</label>
+    <input type="text" id="url-input"
+      placeholder="https://gitee.com/用户名/仓库名/raw/main/model/pose_landmarker_lite.task">
+    <div class="setup-hint">* 需要将 pose_landmarker_lite.task 上传到 Gitee 仓库后填写此链接</div>
+
+    <div class="setup-or">── 或 ──</div>
+
+    <label>方式二：从本地选择模型文件</label>
+    <input type="file" id="model-input" accept=".task" style="color:var(--mt);font-size:13px;width:100%">
+    <div class="setup-hint">* 选择 pose_landmarker_lite.task 或 pose_landmarker_heavy.task 文件</div>
+  </div>
+
+  <div style="text-align:center">
+    <button class="btn btn-p" id="setup-btn" disabled>确认并开始</button>
+    <div style="color:var(--mt);font-size:12px;margin-top:10px">配置保存在浏览器本地，下次打开无需重新配置</div>
+  </div>
+</div>
+
+<!-- ③ 上传 -->
+<div class="view" id="view-upload">
+  <div class="logo">
+    <svg viewBox="0 0 52 52" fill="none">
+      <circle cx="26" cy="26" r="24" stroke="url(#g0)" stroke-width="2.5"/>
+      <path d="M8 18Q26 10 44 18" stroke="url(#g0)" stroke-width="2" fill="none"/>
+      <path d="M8 34Q26 42 44 34" stroke="url(#g0)" stroke-width="2" fill="none"/>
+      <line x1="26" y1="2" x2="26" y2="50" stroke="url(#g0)" stroke-width="2"/>
+      <defs><linearGradient id="g0" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#06b6d4"/><stop offset="1" stop-color="#3b82f6"/>
+      </linearGradient></defs>
+    </svg>
+  </div>
+  <h1 class="hero">垫球技术分析</h1>
+  <p class="hero-sub">上传训练视频，AI 即时评分 · 完全本地处理，无需上传服务器</p>
+
+  <div id="drop">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+    </svg>
+    <div>点击选择视频，或将视频拖拽到此处</div>
+    <div class="hint">支持 <span>MP4 / MOV / AVI</span>，建议时长 5 ~ 30 秒</div>
+    <div id="fname"></div>
+  </div>
+  <input type="file" id="finput" accept="video/mp4,video/quicktime,video/avi,.mp4,.mov,.avi">
+  <div class="fmt">文件大小建议 100MB 以内</div>
+  <button class="btn btn-p" id="start-btn" disabled>开始分析</button>
+  <div class="time-note">视频在你的设备上本地处理，分析约需 20~60 秒</div>
+  <div style="text-align:center;margin-top:14px">
+    <button class="btn btn-g" id="reconfig-btn" style="font-size:12px;padding:6px 16px">重新配置模型</button>
+  </div>
+</div>
+
+<!-- ④ 分析中 -->
+<div id="view-analyzing">
+  <div class="spin-wrap"><div class="spin"></div><div class="spin-icon">🏐</div></div>
+  <div class="init-msg" id="ana-msg">正在提取姿态关键点...</div>
+  <div style="height:16px"></div>
+  <div class="progress-wrap">
+    <div class="progress-bar-bg"><div class="progress-bar" id="prog-bar"></div></div>
+    <div class="progress-label"><span id="prog-txt">0%</span><span id="prog-frame">0/0 帧</span></div>
+  </div>
+  <div class="init-sub">视频在本地处理中，请勿关闭页面</div>
+</div>
+
+<!-- ⑤ 结果 -->
+<div class="view" id="view-result">
+  <div class="g res-header">
+    <div class="score-ring">
+      <svg width="106" height="106" viewBox="0 0 106 106">
+        <circle cx="53" cy="53" r="44" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="8"/>
+        <circle id="ring-arc" cx="53" cy="53" r="44" fill="none"
+          stroke="url(#rg)" stroke-width="8"
+          stroke-dasharray="276" stroke-dashoffset="276"
+          transform="rotate(-90 53 53)"/>
+        <text id="score-num" x="53" y="50" text-anchor="middle" dominant-baseline="middle">0</text>
+        <text class="score-lbl" x="53" y="66" text-anchor="middle">综合得分</text>
+        <defs><linearGradient id="rg" x1="0" y1="0" x2="106" y2="106" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#06b6d4"/><stop offset="1" stop-color="#3b82f6"/>
+        </linearGradient></defs>
+      </svg>
+    </div>
+    <div class="res-meta">
+      <div class="rep-badge" id="rep-badge">-</div>
+      <div id="summary">-</div>
+    </div>
+  </div>
+
+  <div class="sec-title">三阶段得分</div>
+  <div class="phase-row" id="phase-row"></div>
+
+  <div class="sec-title">关键帧图示</div>
+  <div class="kf-row" id="kf-row"></div>
+
+  <div class="sec-title">问题与建议</div>
+  <div class="issues" id="issues"></div>
+
+  <div class="res-foot">
+    <button class="btn btn-g" id="reset-btn">↩ 重新上传</button>
+  </div>
+</div>
+
+<!-- 灯箱 -->
+<div id="lb"><button id="lb-x">✕</button><img id="lb-img" src="" alt="关键帧"></div>
+
+<!-- 错误提示 -->
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     核心逻辑
+════════════════════════════════════════════════════════════════ -->
+<script type="module">
+
+// ─── CDN（全部走 jsDelivr，中国可访问）───────────────────────
+const WASM  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MP_JS = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm';
+
+// ─── 默认模型地址（其他人打开自动下载，无需配置）────────────
+const DEFAULT_MODEL_URL = 'https://gitee.com/xiaoziping/volley_analyse/raw/master/pose_landmarker_heavy.task';
+
+// ─── 评分规则（完整移植自 dig_rules.py）─────────────────────
+const RULES = [
+  { key:'kneeAngle',  name:'膝关节角度',   lo:120, hi:155, w:0.25,
+    low: {issue:'蹲得过低，重心过低',         adv:'膝关节角度控制在 120°–155°，过深的下蹲会影响反应速度和移动灵活性'},
+    high:{issue:'站得过直，重心偏高',         adv:'需适当屈膝降低重心至 120°–155°，有助于保持平衡和增强击球稳定性'} },
+  { key:'hipAngle',   name:'髋关节角度',   lo:100, hi:135, w:0.20,
+    low: {issue:'身体过于前倾',               adv:'髋关节角度保持 100°–135°，身体过度前倾会导致击球方向偏低，球易下网'},
+    high:{issue:'身体过于直立，前倾不足',     adv:'击球时应适当前倾，髋关节角度控制在 100°–135°，有利于传递发力'} },
+  { key:'elbowAngle', name:'肘关节角度',   lo:158, hi:180, w:0.30,
+    low: {issue:'手臂弯曲，击球面不稳定',     adv:'击球时双臂应充分伸直（160°以上），弯肘会导致击球面不平整，影响控球方向'},
+    high:{issue:'正常', adv:''} },
+  { key:'armTrunk',   name:'手臂与躯干夹角', lo:85, hi:140, w:0.15,
+    low: {issue:'手臂抬得过高，击球点偏高',   adv:'垫球击球点应在腰腹前方，手臂不宜过度上抬'},
+    high:{issue:'手臂位置过低',               adv:'适当抬高手臂至与躯干成 85°–140°，确保击球面朝向目标方向'} },
+  { key:'trunkLean',  name:'躯干前倾角',   lo:15,  hi:45,  w:0.10,
+    low: {issue:'躯干前倾不足',               adv:'身体应向前倾 15°–45°，利于把力量传递到球上'},
+    high:{issue:'躯干过度前倾',               adv:'控制身体前倾角在 15°–45°，过度前倾会影响视野和平衡'} },
+];
+
+// ─── 姿态骨架连接 ────────────────────────────────────────────
+const CONN = [[11,12],[11,13],[13,15],[12,14],[14,16],
+              [11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+const KEY_PTS = [11,12,13,14,15,16,23,24,25,26,27,28];
+
+// ─── 工具函数 ─────────────────────────────────────────────────
+const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const mag = v => Math.sqrt(v.reduce((s,x)=>s+x*x,0));
+const vec = (a,b) => [b.x-a.x, b.y-a.y, b.z-a.z];
+const mid = (a,b) => ({x:(a.x+b.x)/2, y:(a.y+b.y)/2, z:(a.z+b.z)/2});
+const vis = lm => lm?.visibility ?? 0;
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+function angle3D(a,b,c) {
+  const ba=vec(b,a), bc=vec(b,c);
+  return Math.acos(clamp(dot(ba,bc)/(mag(ba)*mag(bc)+1e-8),-1,1))*180/Math.PI;
+}
+
+function wAngle(lms, lt, rt) {
+  const lv=Math.min(vis(lms[lt[0]]),vis(lms[lt[1]]),vis(lms[lt[2]]));
+  const rv=Math.min(vis(lms[rt[0]]),vis(lms[rt[1]]),vis(lms[rt[2]]));
+  return (angle3D(lms[lt[0]],lms[lt[1]],lms[lt[2]])*lv +
+          angle3D(lms[rt[0]],lms[rt[1]],lms[rt[2]])*rv) / (lv+rv+1e-8);
+}
+
+// ─── 角度提取（移植自 angle_utils.py）────────────────────────
+function extractAngles(lm) {
+  const kneeAngle  = wAngle(lm,[23,25,27],[24,26,28]);
+  const hipAngle   = wAngle(lm,[11,23,25],[12,24,26]);
+  const elbowAngle = wAngle(lm,[11,13,15],[12,14,16]);
+  const armTrunk   = wAngle(lm,[13,11,23],[14,12,24]);
+  const sh=mid(lm[11],lm[12]), hp=mid(lm[23],lm[24]);
+  const tr=vec(sh,hp);
+  const trunkLean  = Math.acos(clamp(tr[1]/(mag(tr)+1e-8),-1,1))*180/Math.PI;
+  return { kneeAngle, hipAngle, elbowAngle, armTrunk, trunkLean };
+}
+
+// ─── 评分（移植自 dig_rules.py）──────────────────────────────
+function scoreAngles(angles) {
+  let total=0; const items=[], issues=[];
+  for (const r of RULES) {
+    const val=angles[r.key]; if (val==null) continue;
+    let s, status, iss, adv;
+    if (val>=r.lo && val<=r.hi) {
+      s=100; status='good'; iss=''; adv='';
+    } else if (val<r.lo) {
+      s=Math.max(0,Math.round(100-(r.lo-val)/r.lo*200));
+      status='low'; iss=r.low.issue; adv=r.low.adv;
+    } else {
+      s=Math.max(0,Math.round(100-(val-r.hi)/r.hi*200));
+      status='high'; iss=r.high.issue; adv=r.high.adv;
+    }
+    total+=s*r.w;
+    items.push({key:r.key,name:r.name,value:val,lo:r.lo,hi:r.hi,score:s,status});
+    if (status!=='good' && adv) {
+      issues.push({severity:s<60?'high':'medium', name:r.name, issue:iss, advice:adv, score:s});
+    }
+  }
+  issues.sort((a,b)=>a.score-b.score);
+  return { score:Math.round(clamp(total,0,100)), items, issues };
+}
+
+// ─── 信号处理（移植自 phase_analyzer.py）────────────────────
+function smooth(arr, w=5) {
+  const h=Math.floor(w/2);
+  return arr.map((_,i)=>{
+    const sl=arr.slice(Math.max(0,i-h), Math.min(arr.length,i+h+1));
+    return sl.reduce((s,v)=>s+v,0)/sl.length;
+  });
+}
+
+function localMinima(arr, minDist=8, prom=10) {
+  const n=arr.length, cands=[];
+  for (let i=1;i<n-1;i++) {
+    const lo=Math.max(0,i-Math.floor(minDist/2));
+    const hi=Math.min(n,i+Math.floor(minDist/2)+1);
+    const sl=arr.slice(lo,hi);
+    const mn=Math.min(...sl), mx=Math.max(...sl);
+    if (arr[i]===mn && mx-arr[i]>=prom) cands.push(i);
+  }
+  if (!cands.length) return [];
+  const out=[cands[0]];
+  for (let j=1;j<cands.length;j++) {
+    const idx=cands[j], last=out[out.length-1];
+    if (idx-last<minDist){ if (arr[idx]<arr[last]) out[out.length-1]=idx; }
+    else out.push(idx);
+  }
+  return out;
+}
+
+// ─── 阶段分析（多次垫球检测）────────────────────────────────
+function analyzePhases(frames, sampleFps) {
+  if (!frames.length) throw new Error('未检测到姿态数据');
+  const kn = frames.map(f=>f.angles.kneeAngle);
+  const el = frames.map(f=>f.angles.elbowAngle);
+  const knS = smooth(kn,5), elS = smooth(el,5);
+  const minD = Math.max(5, Math.round(sampleFps*0.8));
+  const preps = localMinima(knS, minD, 8);
+
+  const buildRep = (pi, ni, num) => {
+    const end = Math.min(ni, pi+Math.round(sampleFps*3));
+    let hi=pi, maxEl=-1;
+    for (let j=pi;j<end;j++) if (elS[j]>maxEl){maxEl=elS[j];hi=j;}
+    const fi = Math.min(hi+Math.max(3,Math.round(sampleFps*0.5)), frames.length-1);
+    const pR=scoreAngles(frames[pi].angles);
+    const hR=scoreAngles(frames[hi].angles);
+    const fR=scoreAngles(frames[fi].angles);
+    return {
+      repNum:num, score:Math.round(pR.score*0.30+hR.score*0.45+fR.score*0.25),
+      sIdx:{prep:pi,hit:hi,follow:fi},
+      fIdx:{prep:frames[pi].fi,hit:frames[hi].fi,follow:frames[fi].fi},
+      phases:[
+        {phase:'preparation',  phaseName:'① 准备', score:pR.score, issues:pR.issues, angles:frames[pi].angles, lm:frames[pi].lm, time:frames[pi].time},
+        {phase:'hit',          phaseName:'② 击球', score:hR.score, issues:hR.issues, angles:frames[hi].angles, lm:frames[hi].lm, time:frames[hi].time},
+        {phase:'followthrough',phaseName:'③ 随挥', score:fR.score, issues:fR.issues, angles:frames[fi].angles, lm:frames[fi].lm, time:frames[fi].time},
+      ],
+    };
+  };
+
+  let reps;
+  if (preps.length===0) {
+    // 回退：单次检测
+    const pi=knS.indexOf(Math.min(...knS));
+    let hi=pi, mx=-1;
+    for (let j=pi;j<frames.length;j++) if(elS[j]>mx){mx=elS[j];hi=j;}
+    reps=[buildRep(pi, frames.length-1, 1)];
+  } else {
+    reps=preps.map((pi,i)=>buildRep(pi, preps[i+1]??frames.length-1, i+1));
+  }
+
+  const avg  = Math.round(reps.reduce((s,r)=>s+r.score,0)/reps.length);
+  const best = reps.reduce((b,r)=>r.score>b.score?r:b, reps[0]);
+  const sumTxt = avg>=85?'动作规范，整体姿态良好，继续保持！'
+               : avg>=70?'动作基本正确，有少量细节需要改善。'
+               : avg>=55?'动作存在明显问题，建议重点改进标注项目。'
+               : '动作问题较多，建议结合视频反复对照练习。';
+  return { totalScore:avg, repCount:reps.length, summary:sumTxt, reps, bestRep:best };
+}
+
+// ─── 关键帧标注（Canvas 绘制骨架 + 建议面板）────────────────
+async function genKeyframe(video, phase) {
+  const W=video.videoWidth||640, H=video.videoHeight||480;
+  const c=document.createElement('canvas'); c.width=W; c.height=H;
+  const ctx=c.getContext('2d');
+
+  // 跳到对应时间
+  video.currentTime=phase.time;
+  await seeked(video);
+  ctx.drawImage(video,0,0,W,H);
+
+  const lm=phase.lm;
+
+  // 骨架
+  ctx.strokeStyle='rgba(0,210,120,0.85)'; ctx.lineWidth=Math.max(2,W/320);
+  CONN.forEach(([a,b])=>{
+    if ((lm[a]?.visibility??0)<0.3||(lm[b]?.visibility??0)<0.3) return;
+    ctx.beginPath();
+    ctx.moveTo(lm[a].x*W, lm[a].y*H);
+    ctx.lineTo(lm[b].x*W, lm[b].y*H);
+    ctx.stroke();
+  });
+  KEY_PTS.forEach(i=>{
+    if ((lm[i]?.visibility??0)<0.3) return;
+    ctx.fillStyle='rgba(0,210,120,0.9)';
+    ctx.beginPath(); ctx.arc(lm[i].x*W, lm[i].y*H, Math.max(3,W/200), 0, Math.PI*2); ctx.fill();
+  });
+
+  // 角度标注（膝/肘）
+  const ang=phase.angles;
+  const jointLabel=(idx, val)=>{
+    if ((lm[idx]?.visibility??0)<0.3) return;
+    const x=lm[idx].x*W, y=lm[idx].y*H;
+    const fs=Math.max(11, Math.round(W/55));
+    ctx.font=`bold ${fs}px "Microsoft YaHei",sans-serif`;
+    const txt=`${Math.round(val)}°`;
+    const tm=ctx.measureText(txt);
+    ctx.fillStyle='rgba(15,23,42,0.65)';
+    ctx.fillRect(x+5, y-fs-3, tm.width+6, fs+5);
+    ctx.fillStyle='#fde68a';
+    ctx.fillText(txt, x+8, y-4);
+  };
+  jointLabel(25, ang.kneeAngle); jointLabel(26, ang.kneeAngle);
+  jointLabel(13, ang.elbowAngle); jointLabel(14, ang.elbowAngle);
+
+  // 右侧建议面板
+  const pw=Math.min(Math.round(W*0.38), 260);
+  const fs=Math.max(11, Math.round(W/60));
+  ctx.fillStyle='rgba(10,18,36,0.80)';
+  ctx.fillRect(W-pw, 0, pw, H);
+
+  const tx=W-pw+10; let ty=fs+12;
+  ctx.font=`bold ${fs+3}px "Microsoft YaHei",sans-serif`;
+  ctx.fillStyle='#fde68a'; ctx.fillText(phase.phaseName, tx, ty); ty+=fs+10;
+
+  const sc=phase.score;
+  ctx.font=`bold ${fs+8}px "Microsoft YaHei",sans-serif`;
+  ctx.fillStyle=sc>=70?'#4ade80':'#fb923c';
+  ctx.fillText(`${sc}分`, tx, ty); ty+=fs+16;
+
+  if (!phase.issues.length) {
+    ctx.font=`${fs}px "Microsoft YaHei",sans-serif`;
+    ctx.fillStyle='#4ade80'; ctx.fillText('✓ 动作规范', tx, ty);
+  } else {
+    for (const iss of phase.issues) {
+      if (ty>H-10) break;
+      ctx.font=`bold ${fs}px "Microsoft YaHei",sans-serif`;
+      ctx.fillStyle=iss.severity==='high'?'#f87171':'#fbbf24';
+      ctx.fillText(`▲ ${iss.name}`, tx, ty); ty+=fs+4;
+      ctx.font=`${fs-1}px "Microsoft YaHei",sans-serif`;
+      ctx.fillStyle='#cbd5e1';
+      wrapText(ctx, iss.advice, tx, ty, pw-14, fs+2);
+      ty+=Math.ceil(iss.advice.length/16)*(fs+2)+8;
+    }
+  }
+
+  return c.toDataURL('image/jpeg',0.85);
+}
+
+function wrapText(ctx, text, x, y, maxW, lineH) {
+  let line='';
+  for (const ch of text) {
+    const t=line+ch;
+    if (ctx.measureText(t).width>maxW && line) {
+      ctx.fillText(line,x,y); y+=lineH; line=ch;
+    } else { line=t; }
+  }
+  if (line) ctx.fillText(line,x,y);
+}
+
+function seeked(video) {
+  return new Promise(resolve=>{
+    const fn=()=>{ video.removeEventListener('seeked',fn); resolve(); };
+    video.addEventListener('seeked',fn);
+    setTimeout(resolve, 600); // 超时保护
+  });
+}
+
+// ─── 视频处理主流程 ───────────────────────────────────────────
+let poseLandmarker=null;
+
+async function processVideo(file, onProgress) {
+  const video=document.createElement('video');
+  video.src=URL.createObjectURL(file);
+  video.muted=true;
+  await new Promise((ok,err)=>{
+    video.addEventListener('loadedmetadata',ok,{once:true});
+    video.addEventListener('error',err,{once:true});
+  });
+
+  const W=video.videoWidth||640, H=video.videoHeight||480;
+  const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d');
+
+  const fps=30;
+  const step=0.2; // 5fps 采样
+  const total=Math.ceil(video.duration/step);
+  const frames=[]; let fi=0;
+
+  for (let t=0; t<video.duration; t+=step) {
+    video.currentTime=t;
+    await seeked(video);
+    ctx.drawImage(video,0,0,W,H);
+
+    const tsMs=Math.round(t*1000);
+    const det=poseLandmarker.detectForVideo(canvas, tsMs);
+
+    if (det.landmarks?.length) {
+      const lm=det.landmarks[0];
+      frames.push({ fi:Math.round(t*fps), time:t, lm, angles:extractAngles(lm) });
+    }
+    fi++;
+    onProgress(fi, total);
+  }
+
+  if (!frames.length) throw new Error('未能检测到人体姿态，请检查视频内容');
+
+  const result=analyzePhases(frames, 1/step);
+
+  // 生成关键帧图片
+  onProgress(total, total, '正在生成关键帧标注图...');
+  const keyframes={};
+  for (const ph of result.bestRep.phases) {
+    const dataUrl=await genKeyframe(video, ph);
+    const key=ph.phase==='preparation'?'prep_end': ph.phase==='hit'?'hit':'follow_end';
+    keyframes[key]=dataUrl;
+  }
+
+  URL.revokeObjectURL(video.src);
+  return { ...result, keyframes };
+}
+
+// ─── 关键帧 URL 缓存（避免 base64 放入 onclick）────────────────
+const _kfUrls = {};
+
+// ─── 结果渲染 ─────────────────────────────────────────────────
+function renderResult(d) {
+  // 评分圆环动画
+  const score = d.totalScore;
+  const circ  = 276;
+  const arc   = $a('ring-arc');
+  arc.style.strokeDashoffset = circ;
+  setTimeout(() => arc.style.strokeDashoffset = circ - (score/100)*circ, 80);
+  let cur = 0;
+  const numEl = $a('score-num');
+  const t = setInterval(() => {
+    cur = Math.min(cur + Math.ceil(score/60), score);
+    numEl.textContent = cur;
+    if (cur >= score) clearInterval(t);
+  }, 20);
+
+  $a('rep-badge').textContent = `检测到 ${d.repCount} 次垫球`;
+  $a('summary').textContent   = d.summary;
+
+  // 阶段卡
+  const pr = $a('phase-row'); pr.innerHTML = '';
+  d.bestRep.phases.forEach(ph => {
+    const c = ph.score>=80?'#22c55e':ph.score>=60?'#f59e0b':'#ef4444';
+    pr.innerHTML += `<div class="g ph">
+      <div class="ph-name">${ph.phaseName}</div>
+      <div class="ph-score" style="color:${c}">${ph.score}</div>
+      <div class="ph-bg"><div class="ph-bar" data-w="${ph.score}"></div></div>
+    </div>`;
+  });
+  setTimeout(() => document.querySelectorAll('.ph-bar').forEach(b => b.style.width = b.dataset.w+'%'), 120);
+
+  // 关键帧（用 data-key 索引，避免把大 base64 放进 onclick）
+  const kr = $a('kf-row'); kr.innerHTML = '';
+  const kfMap = [['prep_end','① 准备'],['hit','② 击球'],['follow_end','③ 随挥']];
+  kfMap.forEach(([key, lbl]) => {
+    const src = d.keyframes[key]; if (!src) return;
+    _kfUrls[key] = src;
+    kr.innerHTML += `<div class="kf g" data-kfkey="${key}">
+      <img src="${src}" alt="${lbl}">
+      <div class="kf-lbl">${lbl}</div>
+    </div>`;
+  });
+  kr.querySelectorAll('.kf[data-kfkey]').forEach(el =>
+    el.addEventListener('click', () => openLb(_kfUrls[el.dataset.kfkey]))
+  );
+
+  // 问题列表
+  const ie  = $a('issues'); ie.innerHTML = '';
+  const all = d.bestRep.phases.flatMap(ph => ph.issues);
+  all.sort((a, b) => a.score - b.score);
+  if (!all.length) {
+    ie.innerHTML = '<div class="g no-iss">✓ 动作规范，继续保持！</div>';
+  } else {
+    all.forEach(iss => {
+      ie.innerHTML += `<div class="iss ${iss.severity}">
+        <div class="iss-icon">${iss.severity==='high'?'🔴':'🟠'}</div>
+        <div class="iss-body">
+          <div class="iss-name">${iss.name}</div>
+          <div class="iss-desc">${iss.issue}</div>
+          <div class="iss-adv">→ ${iss.advice}</div>
+        </div>
+      </div>`;
+    });
+  }
+}
+
+// ─── 模型加载 ─────────────────────────────────────────────────
+let PoseLandmarker, FilesetResolver;
+
+async function initMP() {
+  setMsg('init','正在加载 AI 引擎...');
+  const mod=await import(MP_JS);
+  PoseLandmarker=mod.PoseLandmarker; FilesetResolver=mod.FilesetResolver;
+}
+
+async function loadModel(modelSrc) {
+  // modelSrc: URL string 或 ArrayBuffer
+  setMsg('init','正在加载姿态模型...');
+  const vision=await FilesetResolver.forVisionTasks(WASM);
+  const opts={
+    baseOptions:{ delegate:'CPU' },
+    runningMode:'VIDEO', numPoses:1,
+    minPoseDetectionConfidence:0.5,
+    minPosePresenceConfidence:0.5,
+    minTrackingConfidence:0.5,
+  };
+  if (typeof modelSrc==='string') {
+    opts.baseOptions.modelAssetPath=modelSrc;
+  } else {
+    opts.baseOptions.modelAssetBuffer = new Uint8Array(modelSrc);
+  }
+  poseLandmarker=await PoseLandmarker.createFromOptions(vision, opts);
+}
+
+// ─── 缓存模型到 IndexedDB ─────────────────────────────────────
+const DB_NAME='vball_model', DB_STORE='model', DB_KEY='task';
+
+async function dbGet() {
+  return new Promise((ok,err)=>{
+    const req=indexedDB.open(DB_NAME,1);
+    req.onupgradeneeded=e=>e.target.result.createObjectStore(DB_STORE);
+    req.onsuccess=e=>{
+      const tx=e.target.result.transaction(DB_STORE,'readonly');
+      tx.objectStore(DB_STORE).get(DB_KEY).onsuccess=r=>ok(r.result);
+    };
+    req.onerror=err;
+  });
+}
+async function dbSet(buf) {
+  return new Promise((ok,err)=>{
+    const req=indexedDB.open(DB_NAME,1);
+    req.onupgradeneeded=e=>e.target.result.createObjectStore(DB_STORE);
+    req.onsuccess=e=>{
+      const tx=e.target.result.transaction(DB_STORE,'readwrite');
+      tx.objectStore(DB_STORE).put(buf,DB_KEY).onsuccess=ok;
+    };
+    req.onerror=err;
+  });
+}
+
+// ─── 启动流程 ─────────────────────────────────────────────────
+async function start() {
+  showV('view-init');
+  try {
+    await initMP();
+
+    // 1. 检查 IndexedDB 缓存
+    const cached=await dbGet();
+    if (cached) {
+      await loadModel(cached);
+      showV('view-upload');
+      return;
+    }
+
+    // 2. 检查 localStorage 里是否有 URL，没有则用内置默认地址
+    const savedUrl = localStorage.getItem('modelUrl') || DEFAULT_MODEL_URL;
+    if (savedUrl) {
+      await loadFromUrl(savedUrl);
+      return;
+    }
+
+    // 3. 都没有 → 配置页（一般不会走到这里）
+    showV('view-setup');
+  } catch(e) {
+    toast('加载失败：'+e.message+'\n请检查网络或刷新重试');
+    showV('view-setup');
+  }
+}
+
+async function loadFromUrl(url) {
+  setMsg('init','正在下载模型文件（约7MB）...');
+  const resp=await fetch(url);
+  if (!resp.ok) throw new Error(`下载失败 HTTP ${resp.status}`);
+  const buf=await resp.arrayBuffer();
+  await dbSet(buf);
+  localStorage.setItem('modelUrl',url);
+  await loadModel(buf);
+  showV('view-upload');
+}
+
+// ─── UI 辅助 ──────────────────────────────────────────────────
+const $a = id => document.getElementById(id);
+const showV = id => {
+  ['view-init','view-setup','view-upload','view-analyzing','view-result'].forEach(v => {
+    const el = $a(v);
+    el.classList.remove('on');
+    if (v === id) el.classList.add('on');
+  });
+};
+const setMsg = (view, msg) => { const el = $a(view==='init'?'init-msg':'ana-msg'); if (el) el.textContent = msg; };
+const toast = msg => { const t=$a('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',4500); };
+
+// ─── 事件绑定 ─────────────────────────────────────────────────
+let selFile=null;
+
+// 设置页
+$a('url-input').addEventListener('input', function(){
+  const hasUrl=this.value.trim().length>0;
+  const hasFile=!!$a('model-input').files[0];
+  $a('setup-btn').disabled=!(hasUrl||hasFile);
+});
+$a('model-input').addEventListener('change', function(){
+  $a('setup-btn').disabled=!this.files[0] && !$a('url-input').value.trim();
+});
+
+$a('setup-btn').addEventListener('click', async()=>{
+  const url=$a('url-input').value.trim();
+  const file=$a('model-input').files[0];
+  $a('setup-btn').disabled=true;
+  try {
+    if (file) {
+      const buf=await file.arrayBuffer();
+      await dbSet(buf);
+      await loadModel(buf);
+    } else {
+      await loadFromUrl(url);
+      return;
+    }
+    showV('view-upload');
+  } catch(e) {
+    toast('加载失败：'+e.message);
+    $a('setup-btn').disabled=false;
+  }
+});
+
+// 上传页
+const drop=$a('drop');
+drop.addEventListener('click',()=>$a('finput').click());
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
+drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');setFile(e.dataTransfer.files[0]);});
+$a('finput').addEventListener('change',()=>setFile($a('finput').files[0]));
+function setFile(f){selFile=f;$a('fname').textContent=f.name;$a('start-btn').disabled=false;}
+
+$a('reconfig-btn').addEventListener('click',()=>{
+  localStorage.removeItem('modelUrl');
+  showV('view-setup');
+});
+
+$a('start-btn').addEventListener('click', async()=>{
+  if (!selFile) return;
+  showV('view-analyzing');
+  const hints=['正在提取姿态关键点...','正在计算关节角度...','正在评估动作规范性...','正在生成分析报告...'];
+  let hi=0; const ht=setInterval(()=>{hi=(hi+1)%hints.length;setMsg('ana',hints[hi]);},2800);
+  try {
+    const result=await processVideo(selFile,(done,total,msg)=>{
+      if (msg) setMsg('ana',msg);
+      const pct=Math.round((done/total)*100);
+      $a('prog-bar').style.width=pct+'%';
+      $a('prog-txt').textContent=pct+'%';
+      $a('prog-frame').textContent=`${done}/${total} 帧`;
+    });
+    clearInterval(ht);
+    renderResult(result);
+    showV('view-result');
+  } catch(e) {
+    clearInterval(ht);
+    toast('分析失败：'+e.message);
+    showV('view-upload');
+  }
+});
+
+$a('reset-btn').addEventListener('click',()=>{
+  selFile=null; $a('finput').value=''; $a('fname').textContent='';
+  $a('start-btn').disabled=true;
+  showV('view-upload');
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+// 灯箱
+function openLb(src){ $a('lb-img').src=src; $a('lb').classList.add('open'); }
+$a('lb-x').addEventListener('click', () => $a('lb').classList.remove('open'));
+$a('lb').addEventListener('click',   e  => { if (e.target===$a('lb')) $a('lb').classList.remove('open'); });
+
+// ─── 启动 ─────────────────────────────────────────────────────
+start();
+</script>
+</body>
+</html>
